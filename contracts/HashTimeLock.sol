@@ -1,3 +1,4 @@
+pragma experimental ABIEncoderV2;
 pragma solidity >=0.5.0 <0.6.0;
 
 contract HashTimeLock {
@@ -5,30 +6,54 @@ contract HashTimeLock {
     mapping (bytes32 => LockContract) contracts;
 
     struct LockContract {
-        uint timeLock;
-        uint amount;
-        bytes32 hashLock;
-        address payable sender;
-        address payable receiver;
+        uint256 inputAmount;
+        uint256 outputAmount;
+        uint256 expiration;
+
         bool withdrawn;
         bool refunded;
+
+        bytes32 hashLock;
+
+        address payable sender;
+        address payable receiver;
+
         string preimage;
+        string outputNetwork;
+        string outputAddress;
     }
 
-    event Withdraw(bytes32 indexed id);
-    event Refund(bytes32 indexed id);
-    event NewContract(
+    event Withdraw(
         bytes32 indexed id,
         address indexed sender,
         address indexed receiver,
-        uint amount,
+        string secret
+    );
+
+    event Refund(
+        bytes32 indexed id,
+        address indexed sender,
+        address indexed receiver
+    );
+
+    event NewContract(
+        uint256 inputAmount,
+        uint256 outputAmount,
+        uint256 expiration,
+
+        bytes32 indexed id,
         bytes32 hashLock,
-        uint timeLock
+
+        address indexed sender,
+        address indexed receiver,
+
+        string outputNetwork,
+        string outputAddress
     );
 
     modifier hashLockMatches(bytes32 id, string memory secret) {
         require(
-            contracts[id].hashLock == keccak256(abi.encodePacked(secret)),
+            contracts[id].hashLock == sha256(abi.encodePacked(secret)),
             "INVALID_HASH_LOCK"
         );
         _;
@@ -36,40 +61,65 @@ contract HashTimeLock {
 
     modifier withdrawable(bytes32 id) {
         LockContract memory tempContract = contracts[id];
-        require(tempContract.receiver  == msg.sender, "WITHDRAW_NOT_RECEIVER");
-        require(tempContract.withdrawn == false,      "ALREADY_WITHDRAWN");
-        require(tempContract.timeLock  >  now,        "WITHDRAW_INVALID_TIME");
+        require(tempContract.withdrawn == false, "ALREADY_WITHDRAWN");
+        require(tempContract.expiration > block.number,"WITHDRAW_INVALID_TIME");
         _;
     }
 
     modifier refundable(bytes32 id) {
         LockContract memory tempContract = contracts[id];
-        require(tempContract.sender    == msg.sender, "REFUND_NOT_SENDER");
-        require(tempContract.refunded  == false,      "ALREADY_REFUNDED");
-        require(tempContract.withdrawn == false,      "ALREADY_WITHDRAWN");
-        require(tempContract.timeLock  <= now,        "REFUND_INVALID_TIME");
+        require(tempContract.sender == msg.sender, "REFUND_NOT_SENDER");
+        require(tempContract.refunded == false, "ALREADY_REFUNDED");
+        require(tempContract.withdrawn == false, "ALREADY_WITHDRAWN");
+        require(tempContract.expiration <= block.number, "REFUND_INVALID_TIME");
         _;
     }
 
-    function newContract(address payable receiver, bytes32 hashLock, uint timeLock)
-        external
+    function newContract(
+        uint256 outputAmount,
+        uint256 expiration,
+        bytes32 hashLock,
+        address payable receiver,
+        string memory outputNetwork,
+        string memory outputAddress
+    )
+        public
         payable
-        returns (bytes32)
     {
         address payable sender = msg.sender;
-        uint256 amount = msg.value;
+        uint256 inputAmount = msg.value;
 
-        require(timeLock > now, "NEW_CONTRACT_INVALID_TIME");
+        require(expiration > block.number, "NEW_CONTRACT_INVALID_TIME");
 
-        require(amount > 0, "NEW_CONTRACT_INVALID_AMOUNT");
+        require(inputAmount > 0, "NEW_CONTRACT_INVALID_AMOUNT");
 
-        bytes32 id = sha256(abi.encodePacked(sender, receiver, amount, hashLock, timeLock));
+        bytes32 id = sha256(abi.encodePacked(sender, receiver, inputAmount, hashLock, expiration));
 
-        contracts[id] = LockContract(timeLock, amount, hashLock, sender, receiver, false, false, "");
+        contracts[id] = LockContract(
+            inputAmount,
+            outputAmount,
+            expiration,
+            false,
+            false,
+            hashLock,
+            sender,
+            receiver,
+            "",
+            outputNetwork,
+            outputAddress
+        );
 
-        emit NewContract(id, msg.sender, receiver, msg.value, hashLock, timeLock);
-
-        return id;
+        emit NewContract(
+            inputAmount,
+            outputAmount,
+            expiration,
+            id,
+            hashLock,
+            sender,
+            receiver,
+            outputNetwork,
+            outputAddress
+        );
     }
 
     function withdraw(bytes32 id, string memory preimage)
@@ -82,8 +132,8 @@ contract HashTimeLock {
         contractExists(c.sender);
         c.preimage = preimage;
         c.withdrawn = true;
-        c.receiver.transfer(c.amount);
-        emit Withdraw(id);
+        c.receiver.transfer(c.inputAmount);
+        emit Withdraw(id, c.sender, c.receiver, c.preimage);
         return true;
     }
 
@@ -95,27 +145,18 @@ contract HashTimeLock {
         LockContract storage c = contracts[id];
         contractExists(c.sender);
         c.refunded = true;
-        c.sender.transfer(c.amount);
-        emit Refund(id);
+        c.sender.transfer(c.inputAmount);
+        emit Refund(id, c.sender, c.receiver);
         return true;
     }
 
     function getContract(bytes32 id)
         public
         view
-        returns (
-            uint timeLock,
-            uint amount,
-            bytes32 hashLock,
-            address sender,
-            address receiver,
-            bool withdrawn,
-            bool refunded,
-            string memory preimage
-        )
+        returns (LockContract memory)
     {
         LockContract memory c = contracts[id];
-        return (c.timeLock, c.amount, c.hashLock, c.sender, c.receiver, c.withdrawn, c.refunded, c.preimage);
+        return c;
     }
 
     function contractExists(bytes32 id)
@@ -132,5 +173,4 @@ contract HashTimeLock {
     {
         require(sender != address(0), "CONTRACT_DOES_NOT_EXISTS");
     }
-
 }
