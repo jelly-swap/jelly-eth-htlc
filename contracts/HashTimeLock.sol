@@ -1,176 +1,166 @@
-pragma experimental ABIEncoderV2;
 pragma solidity >=0.5.0 <0.6.0;
+pragma experimental ABIEncoderV2;
 
 contract HashTimeLock {
+  mapping(bytes32 => LockContract) public contracts;
 
-    mapping (bytes32 => LockContract) contracts;
+  enum SwapStatus { INVALID, ACTIVE, REFUNDED, WITHDRAWN, EXPIRED }
 
-    struct LockContract {
-        uint256 inputAmount;
-        uint256 outputAmount;
-        uint256 expiration;
+  struct LockContract {
+    uint256 inputAmount;
+    uint256 outputAmount;
+    uint256 expiration;
+    bytes32 hashLock;
+    SwapStatus status;
+    address payable sender;
+    address payable receiver;
+    string outputNetwork;
+    string outputAddress;
+  }
 
-        bool withdrawn;
-        bool refunded;
+  event Withdraw(
+    bytes32 indexed id,
+    bytes32 secret,
+    bytes32 hashLock,
+    address indexed sender,
+    address indexed receiver
+  );
 
-        bytes32 hashLock;
+  event Refund(
+    bytes32 indexed id,
+    bytes32 hashLock,
+    address indexed sender,
+    address indexed receiver
+  );
 
-        address payable sender;
-        address payable receiver;
+  event NewContract(
+    uint256 inputAmount,
+    uint256 outputAmount,
+    uint256 expiration,
+    bytes32 indexed id,
+    bytes32 hashLock,
+    address indexed sender,
+    address indexed receiver,
+    string outputNetwork,
+    string outputAddress
+  );
 
-        string preimage;
-        string outputNetwork;
-        string outputAddress;
-    }
+  modifier withdrawable(bytes32 id, bytes32 secret) {
+    LockContract memory tempContract = contracts[id];
+    require(tempContract.status == SwapStatus.ACTIVE, 'SWAP_NOT_ACTIVE');
+    require(tempContract.expiration > block.timestamp, 'INVALID_TIME');
+    require(
+      tempContract.hashLock == sha256(abi.encodePacked(secret)),
+      'INVALID_SECRET'
+    );
+    _;
+  }
 
-    event Withdraw(
-        bytes32 indexed id,
-        address indexed sender,
-        address indexed receiver,
-        string secret
+  modifier refundable(bytes32 id) {
+    LockContract memory tempContract = contracts[id];
+    require(tempContract.status == SwapStatus.ACTIVE, 'SWAP_NOT_ACTIVE');
+    require(tempContract.expiration <= block.timestamp, 'INVALID_TIME');
+    require(tempContract.sender == msg.sender, 'INVALID_SENDER');
+    _;
+  }
+
+  function newContract(
+    uint256 outputAmount,
+    uint256 expiration,
+    bytes32 hashLock,
+    address payable receiver,
+    string memory outputNetwork,
+    string memory outputAddress
+  ) public payable {
+    address payable sender = msg.sender;
+    uint256 inputAmount = msg.value;
+
+    require(expiration > block.timestamp, 'INVALID_TIME');
+
+    require(inputAmount > 0, 'INVALID_AMOUNT');
+
+    bytes32 id = sha256(
+      abi.encodePacked(sender, receiver, inputAmount, hashLock, expiration)
     );
 
-    event Refund(
-        bytes32 indexed id,
-        address indexed sender,
-        address indexed receiver
+    contracts[id] = LockContract(
+      inputAmount,
+      outputAmount,
+      expiration,
+      hashLock,
+      SwapStatus.ACTIVE,
+      sender,
+      receiver,
+      outputNetwork,
+      outputAddress
     );
 
-    event NewContract(
-        uint256 inputAmount,
-        uint256 outputAmount,
-        uint256 expiration,
-
-        bytes32 indexed id,
-        bytes32 hashLock,
-
-        address indexed sender,
-        address indexed receiver,
-
-        string outputNetwork,
-        string outputAddress
+    emit NewContract(
+      inputAmount,
+      outputAmount,
+      expiration,
+      id,
+      hashLock,
+      sender,
+      receiver,
+      outputNetwork,
+      outputAddress
     );
+  }
 
-    modifier hashLockMatches(bytes32 id, string memory secret) {
-        require(
-            contracts[id].hashLock == sha256(abi.encodePacked(secret)),
-            "INVALID_HASH_LOCK"
-        );
-        _;
+  function withdraw(bytes32 id, bytes32 secret)
+    public
+    withdrawable(id, secret)
+    returns (bool)
+  {
+    LockContract storage c = contracts[id];
+    c.status = SwapStatus.WITHDRAWN;
+    c.receiver.transfer(c.inputAmount);
+    emit Withdraw(id, secret, c.hashLock, c.sender, c.receiver);
+    return true;
+  }
+
+  function refund(bytes32 id) external refundable(id) returns (bool) {
+    LockContract storage c = contracts[id];
+    c.status = SwapStatus.REFUNDED;
+    c.sender.transfer(c.inputAmount);
+    emit Refund(id, c.hashLock, c.sender, c.receiver);
+    return true;
+  }
+
+  function getContract(bytes32 id) public view returns (LockContract memory) {
+    LockContract memory c = contracts[id];
+    return c;
+  }
+
+  function contractExists(bytes32 id) public view returns (bool) {
+    return contracts[id].status != SwapStatus.INVALID;
+  }
+
+  function getStatus(bytes32[] memory ids)
+    public
+    view
+    returns (uint8[] memory)
+  {
+    uint8[] memory result = new uint8[](ids.length);
+
+    for (uint256 index = 0; index < ids.length; index++) {
+      result[index] = getStatus(ids[index]);
     }
 
-    modifier withdrawable(bytes32 id) {
-        LockContract memory tempContract = contracts[id];
-        require(tempContract.withdrawn == false, "ALREADY_WITHDRAWN");
-        require(tempContract.expiration > block.number,"WITHDRAW_INVALID_TIME");
-        _;
+    return result;
+  }
+
+  function getStatus(bytes32 id) public view returns (uint8 result) {
+    LockContract memory tempContract = contracts[id];
+
+    if (
+      tempContract.status == SwapStatus.ACTIVE &&
+      tempContract.expiration < block.timestamp
+    ) {
+      result = uint8(SwapStatus.EXPIRED);
+    } else {
+      result = uint8(tempContract.status);
     }
-
-    modifier refundable(bytes32 id) {
-        LockContract memory tempContract = contracts[id];
-        require(tempContract.sender == msg.sender, "REFUND_NOT_SENDER");
-        require(tempContract.refunded == false, "ALREADY_REFUNDED");
-        require(tempContract.withdrawn == false, "ALREADY_WITHDRAWN");
-        require(tempContract.expiration <= block.number, "REFUND_INVALID_TIME");
-        _;
-    }
-
-    function newContract(
-        uint256 outputAmount,
-        uint256 expiration,
-        bytes32 hashLock,
-        address payable receiver,
-        string memory outputNetwork,
-        string memory outputAddress
-    )
-        public
-        payable
-    {
-        address payable sender = msg.sender;
-        uint256 inputAmount = msg.value;
-
-        require(expiration > block.number, "NEW_CONTRACT_INVALID_TIME");
-
-        require(inputAmount > 0, "NEW_CONTRACT_INVALID_AMOUNT");
-
-        bytes32 id = sha256(abi.encodePacked(sender, receiver, inputAmount, hashLock, expiration));
-
-        contracts[id] = LockContract(
-            inputAmount,
-            outputAmount,
-            expiration,
-            false,
-            false,
-            hashLock,
-            sender,
-            receiver,
-            "",
-            outputNetwork,
-            outputAddress
-        );
-
-        emit NewContract(
-            inputAmount,
-            outputAmount,
-            expiration,
-            id,
-            hashLock,
-            sender,
-            receiver,
-            outputNetwork,
-            outputAddress
-        );
-    }
-
-    function withdraw(bytes32 id, string memory preimage)
-        public
-        withdrawable(id)
-        hashLockMatches(id, preimage)
-        returns (bool)
-    {
-        LockContract storage c = contracts[id];
-        contractExists(c.sender);
-        c.preimage = preimage;
-        c.withdrawn = true;
-        c.receiver.transfer(c.inputAmount);
-        emit Withdraw(id, c.sender, c.receiver, c.preimage);
-        return true;
-    }
-
-    function refund(bytes32 id)
-        external
-        refundable(id)
-        returns (bool)
-    {
-        LockContract storage c = contracts[id];
-        contractExists(c.sender);
-        c.refunded = true;
-        c.sender.transfer(c.inputAmount);
-        emit Refund(id, c.sender, c.receiver);
-        return true;
-    }
-
-    function getContract(bytes32 id)
-        public
-        view
-        returns (LockContract memory)
-    {
-        LockContract memory c = contracts[id];
-        return c;
-    }
-
-    function contractExists(bytes32 id)
-        public
-        view
-        returns (bool)
-    {
-        return contracts[id].sender != address(0);
-    }
-
-    function contractExists(address sender)
-        private
-        pure
-    {
-        require(sender != address(0), "CONTRACT_DOES_NOT_EXISTS");
-    }
+  }
 }
