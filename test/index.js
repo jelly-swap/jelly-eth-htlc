@@ -5,12 +5,6 @@ const {
 const HashTimeLock = artifacts.require("HashTimeLock");
 
 // Example mock data
-const outputAmount = 1;
-const outputNetwork = "BTC";
-const outputAddress = "1AcVYm7M3kkJQH28FXAvyBFQzFRL6xPKu8";
-const receiverAddress = "0xa3888DFAB8330aAF1A5C44038B482442c986966D";
-const hashLock =
-  "0x3c335ba7f06a8b01d0596589f73c19069e21c81e5013b91f408165d1bf623d32";
 const secret =
   "0x3853485acd2bfc3c632026ee365279743af107a30492e3ceaa7aefc30c2a048a";
 const id = "0xe76105ec40a9670cc92aa5c5ca4563dc6b18022c2605379e91aca7b96d0b73d6";
@@ -25,7 +19,8 @@ const mockNewContract = {
   outputAddress: "1AcVYm7M3kkJQH28FXAvyBFQzFRL6xPKu8"
 };
 
-let txHash = "";
+// Init empty txHash
+let txHash;
 
 // Expiration field logic
 const getTimestamp = async txHash => {
@@ -72,14 +67,9 @@ contract("HashTimeLock", () => {
 
   // Get one status
   it("should get one status", async () => {
-    const timestamp = await getTimestamp(txHash);
     const newContract = await contractInstance.newContract(
-      outputAmount,
-      (timestamp + SECONDS_IN_ONE_MINUTE).toString(),
-      hashLock,
-      receiverAddress,
-      outputNetwork,
-      outputAddress,
+      ...Object.values(mockNewContract),
+
       { value: 1 }
     );
 
@@ -94,6 +84,14 @@ contract("HashTimeLock", () => {
   // Withdraw
   it("should withdraw", async () => {
     const timestamp = await getTimestamp(txHash);
+    const {
+      outputAmount,
+      hashLock,
+      receiverAddress,
+      outputNetwork,
+      outputAddress
+    } = mockNewContract;
+
     const newContract = await contractInstance.newContract(
       outputAmount,
       (timestamp + SECONDS_IN_ONE_MINUTE).toString(),
@@ -112,6 +110,13 @@ contract("HashTimeLock", () => {
   // Refund
   it("should refund", async () => {
     const timestamp = await getTimestamp(txHash);
+    const {
+      outputAmount,
+      hashLock,
+      receiverAddress,
+      outputNetwork,
+      outputAddress
+    } = mockNewContract;
     const newContract = await contractInstance.newContract(
       outputAmount,
       (timestamp + 2).toString(),
@@ -126,6 +131,7 @@ contract("HashTimeLock", () => {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
     await timeout(2000);
+    
     const contractId = newContract.logs[0].args.id;
     const res = await contractInstance.refund(contractId);
     assert(res);
