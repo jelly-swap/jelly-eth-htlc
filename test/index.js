@@ -1,8 +1,11 @@
-import { MAXIMUM_UNIX_TIMESTAMP, SECONDS_IN_ONE_MINUTE } from "./contants";
+const {
+  MAXIMUM_UNIX_TIMESTAMP,
+  SECONDS_IN_ONE_MINUTE
+} = require("./contants.js");
 const HashTimeLock = artifacts.require("HashTimeLock");
 
 // Example mock data
-const inputAmount = 1;
+const outputAmount = 1;
 const outputNetwork = "BTC";
 const outputAddress = "1AcVYm7M3kkJQH28FXAvyBFQzFRL6xPKu8";
 const receiverAddress = "0xa3888DFAB8330aAF1A5C44038B482442c986966D";
@@ -11,6 +14,16 @@ const hashLock =
 const secret =
   "0x3853485acd2bfc3c632026ee365279743af107a30492e3ceaa7aefc30c2a048a";
 const id = "0xe76105ec40a9670cc92aa5c5ca4563dc6b18022c2605379e91aca7b96d0b73d6";
+
+const mockNewContract = {
+  outputAmount: 1,
+  timestamp: MAXIMUM_UNIX_TIMESTAMP,
+  hashLock:
+    "0x3c335ba7f06a8b01d0596589f73c19069e21c81e5013b91f408165d1bf623d32",
+  receiverAddress: "0xa3888DFAB8330aAF1A5C44038B482442c986966D",
+  outputNetwork: "BTC",
+  outputAddress: "1AcVYm7M3kkJQH28FXAvyBFQzFRL6xPKu8"
+};
 
 let txHash = "";
 
@@ -23,42 +36,45 @@ const getTimestamp = async txHash => {
   return currentTimestamp;
 };
 
-contract("HashTimeLock", async function() {
-  it("should deploy contract", async () => {
-    const hashTimeLock = await HashTimeLock.deployed();
-    assert(hashTimeLock.address !== "");
+// Tests wrapper
+
+contract("HashTimeLock", () => {
+  // Deploy contract
+  let contractInstance;
+
+  beforeEach(async () => {
+    contractInstance = await HashTimeLock.new();
   });
 
+  it("should deploy contract", async () => {
+    assert(contractInstance.address !== "");
+  });
+
+  // Contract exists
   it("should return error, because contract doesn't exist yet", async () => {
-    const hashTimeLock = await HashTimeLock.deployed();
-    const res = await hashTimeLock.contractExists(id);
+    const res = await contractInstance.contractExists(id);
     assert(!res);
   });
 
+  // New contract
   it("should create new contract", async () => {
-    const hashTimeLock = await HashTimeLock.deployed();
-    const res = await hashTimeLock.newContract(
-      inputAmount,
-      MAXIMUM_UNIX_TIMESTAMP,
-      hashLock,
-      receiverAddress,
-      outputNetwork,
-      outputAddress,
+    const res = await contractInstance.newContract(
+      ...Object.values(mockNewContract),
       { value: 1 }
     );
 
     txHash = res.logs[0].transactionHash;
 
     const contractId = res.logs[0].args.id;
-    const contractExists = await hashTimeLock.contractExists(contractId);
+    const contractExists = await contractInstance.contractExists(contractId);
     assert(contractExists);
   });
 
+  // Get one status
   it("should get one status", async () => {
     const timestamp = await getTimestamp(txHash);
-    const hashTimeLock = await HashTimeLock.deployed();
-    const newContract = await hashTimeLock.newContract(
-      inputAmount,
+    const newContract = await contractInstance.newContract(
+      outputAmount,
       (timestamp + SECONDS_IN_ONE_MINUTE).toString(),
       hashLock,
       receiverAddress,
@@ -68,16 +84,18 @@ contract("HashTimeLock", async function() {
     );
 
     const contractId = newContract.logs[0].args.id;
-    const res = await hashTimeLock.methods["getStatus(bytes32)"](contractId);
+    const res = await contractInstance.methods["getStatus(bytes32)"](
+      contractId
+    );
 
     assert(parseInt(res) === 1);
   });
 
+  // Withdraw
   it("should withdraw", async () => {
     const timestamp = await getTimestamp(txHash);
-    const hashTimeLock = await HashTimeLock.deployed();
-    const newContract = await hashTimeLock.newContract(
-      inputAmount,
+    const newContract = await contractInstance.newContract(
+      outputAmount,
       (timestamp + SECONDS_IN_ONE_MINUTE).toString(),
       hashLock,
       receiverAddress,
@@ -87,16 +105,16 @@ contract("HashTimeLock", async function() {
     );
 
     const contractId = newContract.logs[0].args.id;
-    const res = await hashTimeLock.withdraw(contractId, secret);
+    const res = await contractInstance.withdraw(contractId, secret);
     assert(res);
   });
 
+  // Refund
   it("should refund", async () => {
     const timestamp = await getTimestamp(txHash);
-    const hashTimeLock = await HashTimeLock.deployed();
-    const newContract = await hashTimeLock.newContract(
-      inputAmount,
-      (timestamp + 1).toString(),
+    const newContract = await contractInstance.newContract(
+      outputAmount,
+      (timestamp + 2).toString(),
       hashLock,
       receiverAddress,
       outputNetwork,
@@ -107,9 +125,9 @@ contract("HashTimeLock", async function() {
     function timeout(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
-    await timeout(1000);
+    await timeout(2000);
     const contractId = newContract.logs[0].args.id;
-    const res = await hashTimeLock.refund(contractId);
+    const res = await contractInstance.refund(contractId);
     assert(res);
   });
 });
