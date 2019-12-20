@@ -4,13 +4,7 @@ const { SECONDS_IN_ONE_MINUTE } = require("./constants.js");
 const { id, secret, invalidSecret, mockNewContract } = require("./mockData.js");
 const { getTimestamp, timeout } = require("./helpers");
 const statuses = require("./statuses");
-const {
-  INVALID,
-  ACTIVE,
-  REFUNDED,
-  WITHDRAWN,
-  EXPIRED
-} = require("./constants.js");
+const { ACTIVE, REFUNDED, WITHDRAWN } = require("./constants.js");
 
 // Unit tests wrapper
 contract("HashTimeLock", () => {
