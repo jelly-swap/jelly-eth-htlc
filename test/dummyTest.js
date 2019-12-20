@@ -59,6 +59,25 @@ contract("HashTimeLock", async function() {
     assert(contractExists);
   });
 
+  it("should get one status", async () => {
+    const timestamp = await getTimestamp(txHash);
+    const hashTimeLock = await HashTimeLock.deployed();
+    const newContract = await hashTimeLock.newContract(
+      inputAmount,
+      (timestamp + SECONDS_IN_ONE_MINUTE).toString(),
+      hashLock,
+      receiverAddress,
+      outputNetwork,
+      outputAddress,
+      { value: 1 }
+    );
+
+    const contractId = newContract.logs[0].args.id;
+    const res = await hashTimeLock.methods['getStatus(bytes32)'](contractId);
+    // const res = await hashTimeLock.methods['getStatus(bytes32[])']([contractId]);
+    assert(res);
+  });
+
   it("should withdraw", async () => {
     const timestamp = await getTimestamp(txHash);
     const hashTimeLock = await HashTimeLock.deployed();
