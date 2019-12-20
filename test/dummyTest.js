@@ -1,3 +1,4 @@
+import { MAXIMUM_UNIX_TIMESTAMP, SECONDS_IN_ONE_MINUTE } from "./contants";
 const HashTimeLock = artifacts.require("HashTimeLock");
 
 // Example mock data
@@ -11,12 +12,6 @@ const secret =
   "0x3853485acd2bfc3c632026ee365279743af107a30492e3ceaa7aefc30c2a048a";
 const id = "0xe76105ec40a9670cc92aa5c5ca4563dc6b18022c2605379e91aca7b96d0b73d6";
 
-// Constants
-// Year 2038
-const MAXIMUM_UNIX_TIMESTAMP = "2147483648";
-const SECONDS_IN_ONE_MINUTE = 60;
-const ZERO = 0;
-
 let txHash = "";
 
 // Expiration field logic
@@ -29,7 +24,7 @@ const getTimestamp = async txHash => {
 };
 
 contract("HashTimeLock", async function() {
-  it("should deploy contract successfully", async () => {
+  it("should deploy contract", async () => {
     const hashTimeLock = await HashTimeLock.deployed();
     assert(hashTimeLock.address !== "");
   });
@@ -73,9 +68,9 @@ contract("HashTimeLock", async function() {
     );
 
     const contractId = newContract.logs[0].args.id;
-    const res = await hashTimeLock.methods['getStatus(bytes32)'](contractId);
-    // const res = await hashTimeLock.methods['getStatus(bytes32[])']([contractId]);
-    assert(res);
+    const res = await hashTimeLock.methods["getStatus(bytes32)"](contractId);
+
+    assert(parseInt(res) === 1);
   });
 
   it("should withdraw", async () => {
