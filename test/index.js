@@ -1,84 +1,61 @@
-const {
-  MAXIMUM_UNIX_TIMESTAMP,
-  SECONDS_IN_ONE_MINUTE
-} = require("./contants.js");
 const HashTimeLock = artifacts.require("HashTimeLock");
-
-// Example mock data
-const secret =
-  "0x3853485acd2bfc3c632026ee365279743af107a30492e3ceaa7aefc30c2a048a";
-const id = "0xe76105ec40a9670cc92aa5c5ca4563dc6b18022c2605379e91aca7b96d0b73d6";
-
-const mockNewContract = {
-  outputAmount: 1,
-  timestamp: MAXIMUM_UNIX_TIMESTAMP,
-  hashLock:
-    "0x3c335ba7f06a8b01d0596589f73c19069e21c81e5013b91f408165d1bf623d32",
-  receiverAddress: "0xa3888DFAB8330aAF1A5C44038B482442c986966D",
-  outputNetwork: "BTC",
-  outputAddress: "1AcVYm7M3kkJQH28FXAvyBFQzFRL6xPKu8"
-};
-
-// Init empty txHash
-let txHash;
-
-// Expiration field logic
-const getTimestamp = async txHash => {
-  const tx = await web3.eth.getTransaction(txHash);
-  const blockNum = tx.blockNumber;
-  const blockInfo = await web3.eth.getBlock(blockNum);
-  currentTimestamp = blockInfo.timestamp;
-  return currentTimestamp;
-};
+const { SECONDS_IN_ONE_MINUTE } = require("./contants.js");
+const { id, secret, mockNewContract } = require("./mockData.js");
+const { getTimestamp } = require("./helpers");
 
 // Tests wrapper
-
 contract("HashTimeLock", () => {
-  // Deploy contract
   let contractInstance;
+  let txHash;
 
   beforeEach(async () => {
     contractInstance = await HashTimeLock.new();
   });
 
+  // Deploy contract
   it("should deploy contract", async () => {
-    assert(contractInstance.address !== "");
+    assert(
+      contractInstance.address !== "",
+      `Expected empty string for address, got ${contractInstance.address} instead`
+    );
   });
 
   // Contract exists
   it("should return error, because contract doesn't exist yet", async () => {
-    const res = await contractInstance.contractExists(id);
-    assert(!res);
+    const contractExists = await contractInstance.contractExists(id);
+    assert(!contractExists, `Expected "false", got ${contractExists} instead`);
   });
 
   // New contract
   it("should create new contract", async () => {
-    const res = await contractInstance.newContract(
+    const newContract = await contractInstance.newContract(
       ...Object.values(mockNewContract),
       { value: 1 }
     );
 
-    txHash = res.logs[0].transactionHash;
+    txHash = newContract.logs[0].transactionHash;
 
-    const contractId = res.logs[0].args.id;
+    const contractId = newContract.logs[0].args.id;
     const contractExists = await contractInstance.contractExists(contractId);
-    assert(contractExists);
+    assert(contractExists, `Expected "true", got ${contractExists} instead`);
   });
 
   // Get one status
   it("should get one status", async () => {
     const newContract = await contractInstance.newContract(
       ...Object.values(mockNewContract),
-
       { value: 1 }
     );
 
     const contractId = newContract.logs[0].args.id;
-    const res = await contractInstance.methods["getStatus(bytes32)"](
+    const getOneStatus = await contractInstance.methods["getStatus(bytes32)"](
       contractId
     );
 
-    assert(parseInt(res) === 1);
+    assert(
+      parseInt(getOneStatus) === 1,
+      `Expected status code to equal 1, got ${parseInt(getOneStatus)} instead`
+    );
   });
 
   // Withdraw
@@ -103,8 +80,10 @@ contract("HashTimeLock", () => {
     );
 
     const contractId = newContract.logs[0].args.id;
-    const res = await contractInstance.withdraw(contractId, secret);
-    assert(res);
+    const withdraw = await contractInstance.withdraw(contractId, secret);
+
+    //TODO: check contracts status
+    assert(withdraw);
   });
 
   // Refund
@@ -131,9 +110,11 @@ contract("HashTimeLock", () => {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
     await timeout(2000);
-    
+
     const contractId = newContract.logs[0].args.id;
-    const res = await contractInstance.refund(contractId);
-    assert(res);
+    const refund = await contractInstance.refund(contractId);
+
+    //TODO: check contracts status
+    assert(refund);
   });
 });
