@@ -1,7 +1,8 @@
+const truffleAssert = require("truffle-assertions");
 const HashTimeLock = artifacts.require("HashTimeLock");
 const { SECONDS_IN_ONE_MINUTE } = require("./constants.js");
-const { id, secret, mockNewContract } = require("./mockData.js");
-const { getTimestamp } = require("./helpers");
+const { id, secret, invalidSecret, mockNewContract } = require("./mockData.js");
+const { getTimestamp, timeout } = require("./helpers");
 const statuses = require("./statuses");
 const {
   INVALID,
@@ -66,7 +67,7 @@ contract("HashTimeLock", () => {
     );
   });
 
-  // Successful Withdraw
+  // Successful withdraw
   it("should withdraw", async () => {
     const timestamp = await getTimestamp(txHash);
     const {
@@ -100,7 +101,62 @@ contract("HashTimeLock", () => {
     );
   });
 
-  // Successful Refund
+  // Unsuccessful withdraw (invalid secret)
+  it("should revert withdraw, because secret is invalid", async () => {
+    const timestamp = await getTimestamp(txHash);
+    const {
+      outputAmount,
+      hashLock,
+      receiverAddress,
+      outputNetwork,
+      outputAddress
+    } = mockNewContract;
+
+    const newContract = await contractInstance.newContract(
+      outputAmount,
+      (timestamp + SECONDS_IN_ONE_MINUTE).toString(),
+      hashLock,
+      receiverAddress,
+      outputNetwork,
+      outputAddress,
+      { value: 1 }
+    );
+
+    const contractId = newContract.logs[0].args.id;
+
+    await truffleAssert.reverts(
+      contractInstance.withdraw(contractId, invalidSecret)
+    );
+  });
+
+  // Unsuccessful withdraw (expiration time passed)
+  it("should revert withdraw, because expiration time has passed", async () => {
+    const timestamp = await getTimestamp(txHash);
+    const {
+      outputAmount,
+      hashLock,
+      receiverAddress,
+      outputNetwork,
+      outputAddress
+    } = mockNewContract;
+
+    const newContract = await contractInstance.newContract(
+      outputAmount,
+      (timestamp + 2).toString(),
+      hashLock,
+      receiverAddress,
+      outputNetwork,
+      outputAddress,
+      { value: 1 }
+    );
+
+    const contractId = newContract.logs[0].args.id;
+    await timeout(2000);
+
+    await truffleAssert.reverts(contractInstance.withdraw(contractId, secret));
+  });
+
+  // Successful refund
   it("should refund", async () => {
     const timestamp = await getTimestamp(txHash);
     const {
@@ -112,7 +168,7 @@ contract("HashTimeLock", () => {
     } = mockNewContract;
     const newContract = await contractInstance.newContract(
       outputAmount,
-      (timestamp + 2).toString(),
+      (timestamp + 4).toString(),
       hashLock,
       receiverAddress,
       outputNetwork,
@@ -120,12 +176,8 @@ contract("HashTimeLock", () => {
       { value: 1 }
     );
 
-    function timeout(ms) {
-      return new Promise(resolve => setTimeout(resolve, ms));
-    }
-    await timeout(2000);
-
     const contractId = newContract.logs[0].args.id;
+    await timeout(2000);
     await contractInstance.refund(contractId);
 
     const getOneStatus = await contractInstance.methods["getStatus(bytes32)"](
@@ -135,5 +187,29 @@ contract("HashTimeLock", () => {
       statuses[parseInt(getOneStatus)] === REFUNDED,
       `Expected REFUNDED, got ${statuses[parseInt(getOneStatus)]} instead`
     );
+  });
+
+  // Unsuccessful refund (expiration time hasn't passed)
+  it("should revert refund, because expiration time hasn't passed yet", async () => {
+    const timestamp = await getTimestamp(txHash);
+    const {
+      outputAmount,
+      hashLock,
+      receiverAddress,
+      outputNetwork,
+      outputAddress
+    } = mockNewContract;
+    const newContract = await contractInstance.newContract(
+      outputAmount,
+      (timestamp + 6).toString(),
+      hashLock,
+      receiverAddress,
+      outputNetwork,
+      outputAddress,
+      { value: 1 }
+    );
+
+    const contractId = newContract.logs[0].args.id;
+    await truffleAssert.reverts(contractInstance.refund(contractId));
   });
 });

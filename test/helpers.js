@@ -7,6 +7,11 @@ const getTimestamp = async txHash => {
   return currentTimestamp;
 };
 
+const timeout = ms => {
+  return new Promise(resolve => setTimeout(resolve, ms));
+};
+
 module.exports = {
-  getTimestamp
+  getTimestamp,
+  timeout
 };
