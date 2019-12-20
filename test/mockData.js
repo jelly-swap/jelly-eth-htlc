@@ -1,4 +1,4 @@
-const { MAXIMUM_UNIX_TIMESTAMP } = require("./contants.js");
+const { MAXIMUM_UNIX_TIMESTAMP } = require("./constants.js");
 
 // Example mock data
 const mockData = {
