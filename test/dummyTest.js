@@ -51,8 +51,12 @@ contract("HashTimeLock", async function() {
       outputAddress,
       { value: 1 }
     );
+
     txHash = res.logs[0].transactionHash;
-    assert(res);
+
+    const contractId = res.logs[0].args.id;
+    const contractExists = await hashTimeLock.contractExists(contractId);
+    assert(contractExists);
   });
 
   it("should withdraw", async () => {
