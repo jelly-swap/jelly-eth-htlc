@@ -19,7 +19,7 @@ contract("HashTimeLock", () => {
   it("should deploy contract", async () => {
     assert(
       contractInstance.address !== "",
-      `Expected empty string for address, got ${contractInstance.address} instead`
+      `Expected valid hash for address, got ${contractInstance.address} instead`
     );
   });
 
